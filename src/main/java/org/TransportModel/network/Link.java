@@ -9,7 +9,7 @@ public class Link
     private Node fromNode, toNode;
     //Optional
     private boolean isBidirectional;
-    private Integer normalSpeedInKMH, normalTimeInS, capacity, lengthInM;
+    private Integer normalSpeedInKMH, normalTimeInS, capacityPerHour, lengthInM;
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /**                                        Constructor                                           */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -20,7 +20,7 @@ public class Link
         this.fromNode = fromNode;
         this.toNode = toNode;
         this.isBidirectional = false;
-        this.normalSpeedInKMH = this.normalTimeInS = this.capacity = this.lengthInM = null;
+        this.normalSpeedInKMH = this.normalTimeInS = this.capacityPerHour = this.lengthInM = null;
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /**                                          Getters                                             */
@@ -29,7 +29,7 @@ public class Link
     public Integer getNormalSpeedInKMH(){return this.normalSpeedInKMH;}
     public Integer getNormalTimeInS(){return this.normalTimeInS;}
     public Integer getLengthInM(){return this.lengthInM;}
-    public Integer getCapacity(){return this.capacity;}
+    public Integer getCapacityPerHour(){return this.capacityPerHour;}
     public Node getFromNode(){return this.fromNode;}
     public Node getToNode(){return this.toNode;}
     ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +40,7 @@ public class Link
     public void setNormalSpeedInKMH(Integer speed){this.normalSpeedInKMH = speed;}
     public void setNormalTimeInS(Integer time){this.normalTimeInS = time;}
     public void setLengthInM(Integer length){this.lengthInM = length;}
-    public void setCapacity(Integer capacity){this.capacity = capacity;}
+    public void setCapacityPerHour(Integer capacityPerHour){this.capacityPerHour = capacityPerHour;}
     public void setFromNode(Node node){this.fromNode = node;}
     public void setToNode(Node node){this.toNode = node;}
     public String getId(){return this.id;}

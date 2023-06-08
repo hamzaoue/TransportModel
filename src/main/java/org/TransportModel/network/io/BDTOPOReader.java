@@ -20,6 +20,7 @@ public class BDTOPOReader extends NetworkReader
     public final static String SPEED = "VIT_MOY_VL";
     public final static String ACCESS = "ACCES_VL";
     public final static String DIRECTION = "SENS";
+    public final static String LANES_NBR = "NB_VOIES";
     public final static String ACCESS_FREE = "Libre";
     public final static String DIRECTION_INVERSE = "Sens inverse";
     public final static String DIRECTION_BIDIRECTIONAL = "Double sens";
@@ -53,6 +54,11 @@ public class BDTOPOReader extends NetworkReader
         for(Link link:links) {
             link.setNormalSpeedInKMH((Integer) feature.getAttribute(SPEED));
             link.setBidirectional(feature.getAttribute(DIRECTION).equals(DIRECTION_BIDIRECTIONAL));
+            try {
+                int lanes_Nbr = (Integer) feature.getAttribute(LANES_NBR);
+                link.setCapacityPerHour(lanes_Nbr * 1800);
+            }
+            catch(Exception e){link.setCapacityPerHour(1800);}
             if(feature.getAttribute(DIRECTION).equals(DIRECTION_INVERSE))
                 link.inverseDirection();
         }

@@ -25,11 +25,12 @@ public class Main
         Network network_TC = new Network();
         GTFSReader gtfsReader = new GTFSReader();
         String gtfsFolderPath = "src/main/resources/TC/GTFS_IDF";
-        gtfsReader.readGTFSFolder(network_TC,gtfsFolderPath);
+        try{gtfsReader.readGTFSFolder(network_TC,gtfsFolderPath);}
+        catch(Exception ignore){}
 
         //Display Network
         UserInterface gUI = new UserInterface();
-        NetworkCanvas networkCanvas = new NetworkCanvas(network_TI);
+        NetworkCanvas networkCanvas = new NetworkCanvas(network_TC);
         gUI.setComponent(networkCanvas);
     }
 }

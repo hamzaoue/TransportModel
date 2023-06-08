@@ -3,12 +3,8 @@ package org.TransportModel.network.io;
 import org.TransportModel.network.Link;
 import org.TransportModel.network.Network;
 import org.TransportModel.network.Node;
-import org.locationtech.jts.geom.Coordinate;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,61 +16,153 @@ import java.util.List;
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 public class GTFSReader extends NetworkReader
 {
+    private static final String STOP_TIMES_FILE = "/stop_times.txt";
+    private static final String STOPS_FILE = "/stops.txt";
+    private static final String ROUTE_SECTIONS_FILE = "/route_sections.txt";
+    private static final String PATHWAYS_FILE = "/pathways.txt";
+    private static final String TRANSFERS_FILE = "/transfers.txt";
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /** Reads a GTFS folder and fill the network with data
-     * @param network    the network to fill
-     * @param folderPath the path to the GTFS folder */
+     @param network the network to fill
+     @param folderPath the path to the GTFS folder
+     @throws FileNotFoundException if a required GTFS file is not found */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void readGTFSFolder(Network network, String folderPath)
+    public void readGTFSFolder(Network network, String folderPath) throws FileNotFoundException
     {
-        if (!new File(folderPath + "/stops_links.txt").exists())
-            this.createStopLinksFromStopTimes(folderPath + "/stop_times.txt", folderPath + "/stops_links.txt");
-        this.readStopFile(network, folderPath + "/stops.txt");
-        this.readPathwayFile(network, folderPath + "/pathways.txt");
-        this.readTransfersFile(network, folderPath + "/transfers.txt");
-        this.readStopLinksFile(network, folderPath + "/stops_links.txt");
+        //If Needed stop_times file don't exist, error
+        if(!new File(folderPath + STOP_TIMES_FILE).exists())
+            throw new FileNotFoundException("Needed file " + STOP_TIMES_FILE + " not found");
+
+        //If Needed stops file don't exist, error
+        if(!new File(folderPath + STOPS_FILE).exists())
+            throw new FileNotFoundException("Needed file " + STOPS_FILE + " not found");
+        this.readStopFile(network, folderPath);
+
+        //If Optional route_sections file don't exist, create it from Needed stop_times file
+        if(!new File(folderPath + ROUTE_SECTIONS_FILE).exists())
+            this.readStopTimesFile(folderPath);
+        this.readRouteSectionsFile(network,folderPath);
+
+        //If Optional pathways file don't exist, do what ?
+        if (new File(folderPath + PATHWAYS_FILE).exists())
+            this.readPathwayFile(network, folderPath);
+
+        //If Optional transfers file don't exist, do what ?
+        if (new File(folderPath + TRANSFERS_FILE).exists())
+            this.readTransfersFile(network, folderPath);
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Reads a stop file and adds stop nodes to the network.
-     * @param network  the network to add the stop nodes to
-     * @param filePath the path to the stop file */
+    /** Reads the stops file from the GTFS folder and creates nodes in the network based on the data.
+     @param network the network to populate with nodes
+     @param folderPath the path to the GTFS folder
+     @throws RuntimeException if the stops file is missing required headers */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void readStopFile(Network network, String filePath)
+    private void readStopFile(Network network, String folderPath)
     {
+        //Extract File data
+        String filePath = folderPath + STOPS_FILE;
         List<String[]> dataLines = this.extractData(filePath, ',');
         List<String> headers = Arrays.asList(dataLines.remove(0));
+
+        //If file don't contain needed columns, error
+        if(!headers.contains("stop_id") || !headers.contains("stop_lon") || !headers.contains("stop_lat"))
+            throw new RuntimeException("missing header in" + STOPS_FILE);
+
+        //Associate Node attributes with data column index
         HashMap<NODE_ATTRIBUTES, Integer> headersIndex = new HashMap<>();
         headersIndex.put(NODE_ATTRIBUTES.ID, headers.indexOf("stop_id"));
         headersIndex.put(NODE_ATTRIBUTES.X, headers.indexOf("stop_lon"));
         headersIndex.put(NODE_ATTRIBUTES.Y, headers.indexOf("stop_lat"));
-        this.addNodes(network, dataLines, headersIndex);
+
+        //Create and add Nodes to network
+        List<Node> nodes = createNodesFromData(dataLines, headersIndex);
+        for(Node node:nodes)
+            network.addNode(node);
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Reads a transfers file and add transfers links to the network
-     * Transfer time on foot between nearby stops
-     * @param network  the network to add the pathways links to
-     * @param filePath the path to the pathway file */
+    /** Reads the route_sections file from the GTFS folder and creates links in the network based on the data.
+     @param network the network to populate with links
+     @param folderPath the path to the GTFS folder
+     @throws RuntimeException if the route_sections file is missing required headers */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void readTransfersFile(Network network, String filePath)
+    private void readRouteSectionsFile(Network network, String folderPath)
     {
+        //Extract File data
+        String filePath = folderPath + ROUTE_SECTIONS_FILE;
         List<String[]> dataLines = this.extractData(filePath, ',');
         List<String> headers = Arrays.asList(dataLines.remove(0));
+
+        //If file don't contain needed columns, error
+        if(!headers.contains("from_stop_id") || !headers.contains("to_stop_id") || !headers.contains("traversal_time"))
+            throw new RuntimeException("missing header in" + ROUTE_SECTIONS_FILE);
+
+        //Associate Link attributes with data column index
+        HashMap<LINK_ATTRIBUTES, Integer> headersIndex = new HashMap<>();
+        headersIndex.put(LINK_ATTRIBUTES.FROM_ID, headers.indexOf("from_stop_id"));
+        headersIndex.put(LINK_ATTRIBUTES.TO_ID, headers.indexOf("to_stop_id"));
+        headersIndex.put(LINK_ATTRIBUTES.TIME, headers.indexOf("time"));
+
+        //Create Links with file data
+        List<Link> links = this.createLinksFromData(network, dataLines, headersIndex);
+
+        //Add missing data and add to network (length, capacity, speed)
+        for(Link link:links) {
+            network.addLink(link);
+        }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    /** Reads the transfers file from the GTFS folder and creates links in the network based on the data.
+     * Transfers = footpath between nearby stops of different modes of transport or services
+     @param network the network to populate with links
+     @param folderPath the path to the GTFS folder
+     @throws RuntimeException if the route_sections file is missing required headers */
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    public void readTransfersFile(Network network, String folderPath)
+    {
+        //Extract File data
+        String filePath = folderPath + TRANSFERS_FILE;
+        List<String[]> dataLines = this.extractData(filePath, ',');
+        List<String> headers = Arrays.asList(dataLines.remove(0));
+
+        //If file don't contain needed columns, error
+        if(!headers.contains("from_stop_id") || !headers.contains("to_stop_id") || !headers.contains("min_transfer_time"))
+            throw new RuntimeException("missing header in" + TRANSFERS_FILE);
+
+        //Associate Link attributes with data column index
         HashMap<LINK_ATTRIBUTES, Integer> headersIndex = new HashMap<>();
         headersIndex.put(LINK_ATTRIBUTES.FROM_ID, headers.indexOf("from_stop_id"));
         headersIndex.put(LINK_ATTRIBUTES.TO_ID, headers.indexOf("to_stop_id"));
         headersIndex.put(LINK_ATTRIBUTES.TIME, headers.indexOf("min_transfer_time"));
-        this.addLinks(network, dataLines, headersIndex);
+
+        //Create Links with file data
+        List<Link> links = this.createLinksFromData(network, dataLines, headersIndex);
+
+        //Add missing data and add to network (length, capacity, speed, bidirectional)
+        for(Link link:links) {
+            link.setNormalSpeedInKMH(2);
+            network.addLink(link);
+        }
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /**  Reads a pathways file and add pathways links to the network
-     * Linking route on foot between two stops of a station
-     * @param network  the network to add the pathways links to
-     * @param filePath the path to the pathway file */
+    /** Reads the pathways file from the GTFS folder and creates links in the network based on the data.
+     * Pathway = specific paths inside the network (between two platforms of a metro station for example)
+    @param network the network to populate with links
+    @param folderPath the path to the GTFS folder
+    @throws RuntimeException if the route_sections file is missing required headers */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void readPathwayFile(Network network, String filePath)
+    public void readPathwayFile(Network network, String folderPath)
     {
+        //Extract File data
+        String filePath = folderPath + PATHWAYS_FILE;
         List<String[]> dataLines = this.extractData(filePath, ',');
         List<String> headers = Arrays.asList(dataLines.remove(0));
+
+        //If file don't contain needed columns, error
+        if(!headers.contains("pathway_id") || !headers.contains("from_stop_id") || !headers.contains("to_stop_id")
+        || !headers.contains("is_bidirectional") || !headers.contains("length") || !headers.contains("traversal_time") )
+            throw new RuntimeException("missing header in" + PATHWAYS_FILE);
+
+        //Associate Link attributes with data column index
         HashMap<LINK_ATTRIBUTES, Integer> headersIndex = new HashMap<>();
         headersIndex.put(LINK_ATTRIBUTES.ID, headers.indexOf("pathway_id"));
         headersIndex.put(LINK_ATTRIBUTES.FROM_ID, headers.indexOf("from_stop_id"));
@@ -82,87 +170,26 @@ public class GTFSReader extends NetworkReader
         headersIndex.put(LINK_ATTRIBUTES.BIDIRECTIONAL, headers.indexOf("is_bidirectional"));
         headersIndex.put(LINK_ATTRIBUTES.LENGTH, headers.indexOf("length"));
         headersIndex.put(LINK_ATTRIBUTES.TIME, headers.indexOf("traversal_time"));
-        this.addLinks(network, dataLines, headersIndex);
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Reads a transport line file and add pathways links to the network
-     * Transport Link between two stops station
-     * @param network  The network to which
-     * @param filePath The path to the file containing the stop links data */
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    private void readStopLinksFile(Network network, String filePath)
-    {
-        List<String[]> dataLines = this.extractData(filePath, ',');
-        List<String> headers = Arrays.asList(dataLines.remove(0));
-        HashMap<LINK_ATTRIBUTES, Integer> headersIndex = new HashMap<>();
-        headersIndex.put(LINK_ATTRIBUTES.FROM_ID, headers.indexOf("from_stop_id"));
-        headersIndex.put(LINK_ATTRIBUTES.TO_ID, headers.indexOf("to_stop_id"));
-        headersIndex.put(LINK_ATTRIBUTES.TIME, headers.indexOf("traversal_time"));
-        this.addLinks(network, dataLines, headersIndex);
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Adds nodes to a network based on the provided data
-     * @param network      The network to which the nodes are added
-     * @param dataLines    A list of string arrays representing the node data (1 line = 1 node)
-     * @param headersIndex A HashMap containing the indexes of column headers in the node data */
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void addNodes(Network network, List<String[]> dataLines, HashMap<NODE_ATTRIBUTES, Integer> headersIndex)
-    {
-        for (String[] dataLine : dataLines) {
-            try {
-                Node node;
-                double x = Double.parseDouble(dataLine[headersIndex.get(NODE_ATTRIBUTES.X)]);
-                double y = Double.parseDouble(dataLine[headersIndex.get(NODE_ATTRIBUTES.Y)]);
-                if (headersIndex.containsKey(NODE_ATTRIBUTES.ID))
-                    node = new Node(dataLine[headersIndex.get(NODE_ATTRIBUTES.ID)], new Coordinate(x, y));
-                else
-                    node = new Node(new Coordinate(x, y));
-                network.addNode(node);
-            } catch(Exception e){e.printStackTrace();}
+
+        //Create Links with file data
+        List<Link> links = this.createLinksFromData(network, dataLines, headersIndex);
+
+        //Add missing data and add to network (capacity, bidirectional,speed)
+        for(Link link:links) {
+            link.setNormalSpeedInKMH(2);
+            network.addLink(link);
         }
     }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Adds links to a network based on the provided data
-     * @param network      The network to which the links are added
-     * @param dataLines    A list of string arrays representing the link data (1 line = 1 link)
-     * @param headersIndex A HashMap containing the indexes of column headers in the link data */
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void addLinks(Network network, List<String[]> dataLines, HashMap<LINK_ATTRIBUTES, Integer> headersIndex)
-    {
-        for (String[] dataLine : dataLines) {
-            try {
-                Link link;
-                Node from_node = network.getNode(dataLine[headersIndex.get(LINK_ATTRIBUTES.FROM_ID)]);
-                Node to_node = network.getNode(dataLine[headersIndex.get(LINK_ATTRIBUTES.TO_ID)]);
-                if (headersIndex.containsKey(LINK_ATTRIBUTES.ID))
-                    link = new Link(dataLine[headersIndex.get(LINK_ATTRIBUTES.ID)], from_node, to_node);
-                else
-                    link = new Link(from_node, to_node);
-                if (headersIndex.containsKey(LINK_ATTRIBUTES.BIDIRECTIONAL))
-                    link.setBidirectional(dataLine[headersIndex.get(LINK_ATTRIBUTES.TO_ID)].equals("1"));
-                if (headersIndex.containsKey(LINK_ATTRIBUTES.LENGTH))
-                    link.setLengthInM((int)(Double.parseDouble(dataLine[headersIndex.get(LINK_ATTRIBUTES.LENGTH)])));
-                if (headersIndex.containsKey(LINK_ATTRIBUTES.SPEED))
-                    link.setNormalSpeedInKMH(Integer.valueOf(dataLine[headersIndex.get(LINK_ATTRIBUTES.SPEED)]));
-                if (headersIndex.containsKey(LINK_ATTRIBUTES.TIME))
-                    link.setNormalSpeedInKMH(Integer.valueOf(dataLine[headersIndex.get(LINK_ATTRIBUTES.TIME)]));
-                if (headersIndex.containsKey(LINK_ATTRIBUTES.CAPACITY))
-                    link.setCapacity(Integer.valueOf(dataLine[headersIndex.get(LINK_ATTRIBUTES.CAPACITY)]));
-                network.addLink(link);
-            }
-            catch (Exception e) {e.printStackTrace();}
-        }
-    }
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /** Creates a stop links file from a stop times file
-     * @param stopTimesFilePath The path to the stop times file
-     * @param stopLinksFilePath The path to the output stop links file */
+     * @param folderPath The path to the stop times file */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    private void createStopLinksFromStopTimes(String stopTimesFilePath, String stopLinksFilePath)
+    private void readStopTimesFile(String folderPath)
     {
-        List<String[]> trips = this.extractStopTimesLinksData(stopTimesFilePath);
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(stopLinksFilePath))) {
-            writer.write("from_stop_id,to_stop_id,traversal_time");
+        List<String[]> trips = this.extractStopTimesLinksData(folderPath + STOP_TIMES_FILE);
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(folderPath + ROUTE_SECTIONS_FILE))) {
+            writer.write("from_stop_id,to_stop_id,time");
             for (String[] stopTimeData : trips) {
                 writer.newLine();
                 writer.write(stopTimeData[0] + "," + stopTimeData[1] + "," + stopTimeData[2]);
