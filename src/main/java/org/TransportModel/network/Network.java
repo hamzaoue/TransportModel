@@ -22,7 +22,7 @@ public class Network
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     public boolean containsNode(String id){return this.nodes.containsKey(id);}
     public boolean containsLink(String id){return this.nodes.containsKey(id);}
-    public Node getNode(String id){return this.nodes.get(id);}
+    public Node getNode(String id) {return this.nodes.get(id);}
     public HashMap<String,Node> getNodes(){return this.nodes;}
     public Link getLink(String id){return this.links.get(id);}
     public HashMap<String,Link> getLinks(){return this.links;}

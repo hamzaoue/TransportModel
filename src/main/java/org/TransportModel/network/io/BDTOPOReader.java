@@ -2,21 +2,22 @@ package org.TransportModel.network.io;
 
 import org.TransportModel.network.Link;
 import org.TransportModel.network.Network;
+import org.TransportModel.network.Node;
 import org.geotools.data.shapefile.ShapefileDataStore;
 import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.simple.SimpleFeatureSource;
+import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.geom.LineString;
 import org.locationtech.jts.geom.MultiLineString;
 import org.opengis.feature.simple.SimpleFeature;
 
 import java.io.File;
-import java.util.List;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /** BDTOPOReader is a class that reads BDTOPO Files and fill a network */
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-public class BDTOPOReader extends NetworkReader
-{
+public class BDTOPOReader {
     public final static String SPEED = "VIT_MOY_VL";
     public final static String ACCESS = "ACCES_VL";
     public final static String DIRECTION = "SENS";
@@ -35,45 +36,34 @@ public class BDTOPOReader extends NetworkReader
         while (featureIterator.hasNext())
         {
             SimpleFeature feature = featureIterator.next();
-            if(isFeatureValid(feature)) {
-                List<Link> links = this.createLinksFromMultiLineString((MultiLineString)feature.getDefaultGeometry());
-                this.setLinksAttributes(links,feature);
-                for(Link link:links)
+            Geometry geometry = (Geometry) feature.getDefaultGeometry();
+            if(geometry instanceof MultiLineString && feature.getAttribute(ACCESS).equals(ACCESS_FREE))
+            {
+                MultiLineString multiLineString = (MultiLineString)feature.getDefaultGeometry();
+                int numGeometries = multiLineString.getNumGeometries();
+                for (int i = 0; i < numGeometries; i++)
+                {
+                    LineString lineString = (LineString) multiLineString.getGeometryN(i);
+                    Coordinate[] lineCoordinates = lineString.getCoordinates();
+                    Coordinate from = lineCoordinates[0];
+                    Coordinate to = lineCoordinates[lineCoordinates.length-1];
+                    Node fromNode = new Node( from.x + ":" + from.y, from);
+                    Node toNode = new Node(to.x + ":" + to.y, to);
+                    String id = fromNode.getId() + ":" + toNode.getId();
+                    double speedInKMH = (Integer) feature.getAttribute(SPEED);
+                    double speedInMS = speedInKMH * (1000.0 / 3600.0);
+                    boolean bidirectional = feature.getAttribute(DIRECTION).equals(DIRECTION_BIDIRECTIONAL);
+                    int lanes_Nbr = (Integer) feature.getAttribute(LANES_NBR);
+                    double maxCapacity = lanes_Nbr * 1800;
+                    double length = lineString.getLength();
+                    Link link = new Link(id,fromNode,toNode,bidirectional,speedInMS,maxCapacity,length);
+                    if(feature.getAttribute(DIRECTION).equals(DIRECTION_INVERSE))
+                        link.inverseDirection();
                     network.addLink(link);
+                }
             }
         }
         featureIterator.close();
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Sets attributes (capacity, speed, direction) for a list of links of a given feature
-     * @param links The list of links to set attributes for
-     * @param feature The feature containing the attribute values */
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    private void setLinksAttributes(List<Link> links, SimpleFeature feature)
-    {
-        for(Link link:links) {
-            link.setNormalSpeedInKMH((Integer) feature.getAttribute(SPEED));
-            link.setBidirectional(feature.getAttribute(DIRECTION).equals(DIRECTION_BIDIRECTIONAL));
-            try {
-                int lanes_Nbr = (Integer) feature.getAttribute(LANES_NBR);
-                link.setCapacityPerHour(lanes_Nbr * 1800);
-            }
-            catch(Exception e){link.setCapacityPerHour(1800);}
-            if(feature.getAttribute(DIRECTION).equals(DIRECTION_INVERSE))
-                link.inverseDirection();
-        }
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Checks if a given feature is valid
-     * @param feature The feature to check
-     * @return {@code true} if the feature is valid, {@code false} otherwise */
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    private boolean isFeatureValid(SimpleFeature feature)
-    {
-        Geometry geometry = (Geometry) feature.getDefaultGeometry();
-        boolean isMultiLineString = geometry instanceof MultiLineString;
-        boolean isAccessibleToVL = feature.getAttribute(ACCESS).equals(ACCESS_FREE);
-        return isMultiLineString && isAccessibleToVL;
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /** Reads a shapefile and returns a FeatureIterator representing the features in the shapefile

@@ -46,8 +46,10 @@ public class NetworkCanvas extends JComponent
     public void paintComponent(Graphics g)
     {
         if (this.network != null && this.bounds[0]!=null) {
+
             this.drawNodes(g);
             this.drawEdges(g);
+
         }
     }
     //////////////////////////////////////////////////////////////////////////////////////////////////
