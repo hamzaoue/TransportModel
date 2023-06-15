@@ -35,7 +35,6 @@ public class Link
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /**                                          Setters                                             */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void inverseDirection(){Node tempo = this.fromNode; this.fromNode = this.toNode; this.toNode = tempo;}
     public void setBidirectional(boolean isBidirectional){this.isBidirectional = isBidirectional;}
     public void setNormalSpeedInMS(double speed){this.normalSpeedInMS = speed;}
     public void setLengthInM(double length){this.lengthInM = length;}

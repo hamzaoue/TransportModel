@@ -12,8 +12,7 @@ public class Network
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /**                                       Constructor                                            */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public Network()
-    {
+    public Network(){
         this.nodes = new HashMap<>();
         this.links = new HashMap<>();
     }
@@ -29,8 +28,7 @@ public class Network
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /**                                                                                              */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void addNode(Node node)
-    {
+    public void addNode(Node node) {
         //If node id already exists, do nothing
         if(!this.containsNode(node.getId()))
             this.nodes.put(node.getId(),node);
@@ -38,8 +36,7 @@ public class Network
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /**                                                                                              */
     ///////////////////////////////////////////////////////////////////////////////////////////////////
-    public void addLink(Link link)
-    {
+    public void addLink(Link link) {
         //Check if from node already exits
         if(!this.containsNode(link.getFromNode().getId()))
             this.addNode(link.getFromNode());

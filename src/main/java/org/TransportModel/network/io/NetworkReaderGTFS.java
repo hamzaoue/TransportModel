@@ -3,6 +3,7 @@ package org.TransportModel.network.io;
 import org.TransportModel.network.Link;
 import org.TransportModel.network.Network;
 import org.TransportModel.network.Node;
+import org.geotools.referencing.GeodeticCalculator;
 import org.locationtech.jts.geom.Coordinate;
 
 import java.io.*;
@@ -14,7 +15,7 @@ import java.util.*;
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /** GTFSReader is a class that reads GTFS (General Transit Feed Specification) to fill a network */
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-public class GTFSReader
+public class NetworkReaderGTFS
 {
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     /** Reads a GTFS folder and fill the network with data
@@ -29,10 +30,10 @@ public class GTFSReader
             this.createRouteSectionsFile(folderPath);
         //If Optional pathways file don't exist, toDo create it
         if(!new File(folderPath + GTFS_FILES.PATHWAYS).exists())
-            return;
+            throw new RuntimeException("File missing");
         //If Optional transfers file don't exist, toDo create it
-        if (new File(folderPath + GTFS_FILES.TRANSFERS).exists())
-            return;
+        if (!new File(folderPath + GTFS_FILES.TRANSFERS).exists())
+            throw new RuntimeException("File missing");
         this.readStopFile(network, folderPath);
         this.readRouteSectionsFile(network,folderPath);
         this.readPathwayFile(network, folderPath);
@@ -47,12 +48,12 @@ public class GTFSReader
     {
         Path filePath = Paths.get(folderPath, GTFS_FILES.STOPS);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
-                throw new RuntimeException("Delimiter in data: "+dataLine);
+                throw new RuntimeException("Delimiter in data: "+ dataLine);
             String stop_id = values[headers.indexOf(STOPS.ID)];//If header don't exist: error
             String lon_string = values[headers.indexOf(STOPS.LON)];
             String lat_string = values[headers.indexOf(STOPS.LAT)];
@@ -73,10 +74,10 @@ public class GTFSReader
     {
         Path filePath = Paths.get(folderPath, GTFS_FILES.ROUTE_SECTIONS);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
                 throw new RuntimeException("Delimiter in data: "+dataLine);
             String route_id = values[headers.indexOf(SECTIONS.ROUTE_ID)];//If header don't exist: error
@@ -93,7 +94,7 @@ public class GTFSReader
             Node fromNode = network.getNode(from_id);
             Node toNode = network.getNode(to_id);
             String section_id = route_id+":"+from_id+":"+to_id;
-            double lengthInM = fromNode.getDistanceInM(toNode);
+            double lengthInM = this.calculateDistance(fromNode.getCoordinate(),toNode.getCoordinate());
             double speedInMS = lengthInM / timeInS;
             int maxCapacity = this.getMaxCapacity(route_type);
             double capacityPerHour = maxCapacity / frequencyInS / 3600;
@@ -111,10 +112,10 @@ public class GTFSReader
     {
         Path filePath = Paths.get(folderPath, GTFS_FILES.TRANSFERS);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
                 throw new RuntimeException("Delimiter in data: "+dataLine);
             String from_id = values[headers.indexOf(TRANSFERS.FROM_ID)];//If header don't exist: error
@@ -126,7 +127,7 @@ public class GTFSReader
                 throw new RuntimeException("Stop not found: "+dataLine);
             Node fromNode = network.getNode(from_id);
             Node toNode = network.getNode(to_id);
-            double lengthInM = fromNode.getDistanceInM(toNode);
+            double lengthInM = this.calculateDistance(fromNode.getCoordinate(),toNode.getCoordinate());
             double speedInMS = lengthInM / timeInS;
             double capacityPerHour = 10000000;
             Link link = new Link(id, fromNode, toNode, true, speedInMS, capacityPerHour, lengthInM);
@@ -143,10 +144,10 @@ public class GTFSReader
     {
         Path filePath = Paths.get(folderPath, GTFS_FILES.PATHWAYS);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
                 throw new RuntimeException("Delimiter in data: "+dataLine);
             String id = values[headers.indexOf(PATHWAYS.ID)];//If header don't exist: error
@@ -166,22 +167,6 @@ public class GTFSReader
             boolean bidirectional =  bidirectional_string.equals("1");
             Link link = new Link(id, fromNode, toNode, bidirectional, speedInMS, capacityPerHour, lengthInM);
             network.addLink(link);
-        }
-    }
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    /** Returns the maximum capacity for a given route type
-     @param route_type The route type identifier
-     @return The maximum capacity value corresponding to the given route type */
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    private int getMaxCapacity(int route_type)
-    {
-        switch(route_type) {
-            case 0:return 1000;//Tram or light subway
-            case 1:return 1001;//Subway
-            case 2:return 1002;//Train
-            case 3:return 1003;//Bus
-            case 5:return 1005;//Tram
-            default:return 1006;
         }
     }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -254,10 +239,10 @@ public class GTFSReader
         HashMap<String,HashMap<String,Integer>> tripStops = new HashMap<>();
         Path filePath = Paths.get(folderPath, GTFS_FILES.STOP_TIMES);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
                 throw new RuntimeException("Delimiter in data: "+dataLine);
             String stop_id = values[headers.indexOf(TIMES.STOP_ID)];//If header don't exist: error
@@ -284,10 +269,10 @@ public class GTFSReader
         HashMap<String,List<String>> routeTrips = new HashMap<>();
         Path filePath = Paths.get(folderPath, GTFS_FILES.TRIPS);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
                 throw new RuntimeException("Delimiter in data: "+dataLine);
             String trip_id = values[headers.indexOf(TRIPS.ID)];//If header don't exist: error
@@ -308,10 +293,10 @@ public class GTFSReader
         HashMap<String, String> routesTypes = new HashMap<>();
         Path filePath = Paths.get(folderPath, GTFS_FILES.ROUTES);
         List<String> lines = Files.readAllLines(filePath);//If file don't exist:error
-        List<String> headers = Arrays.asList(lines.remove(0).split(","));
+        List<String> headers = Arrays.asList(lines.remove(0).split(",", -1));
         for (String dataLine : lines)
         {
-            String[] values = dataLine.split(",");
+            String[] values = dataLine.split(",", -1);
             if(values.length != headers.size())//If delimiter in data: error
                 throw new RuntimeException("Delimiter in data: "+dataLine);
             String route_id = values[headers.indexOf(ROUTES.ID)];//If header don't exist: error
@@ -377,6 +362,34 @@ public class GTFSReader
         }
         return totalTraversalTimes/passageNumbers;
     }
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    /** Returns the maximum capacity for a given route type
+     @param route_type The route type identifier
+     @return The maximum capacity value corresponding to the given route type */
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    private int getMaxCapacity(int route_type)
+    {
+        switch(route_type) {
+            case 0:return MAX_CAPACITY.TRAM_OR_LIGHT_SUBWAY;
+            case 1:return MAX_CAPACITY.SUBWAY;
+            case 2:return MAX_CAPACITY.TRAIN;
+            case 3:return MAX_CAPACITY.BUS;
+            default:return MAX_CAPACITY.DEFAULT;
+        }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    /** Calculates the distance in meters between two coordinates
+     * @param coordinate1 The first coordinate
+     * @param coordinate2 The second coordinate
+     * @return The distance in meters between the two coordinates */
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    public double calculateDistance(Coordinate coordinate1, Coordinate coordinate2)
+    {
+        GeodeticCalculator calculator = new GeodeticCalculator();
+        calculator.setStartingGeographicPoint(coordinate1.x, coordinate1.y);
+        calculator.setDestinationGeographicPoint(coordinate2.x, coordinate2.y);
+        return calculator.getOrthodromicDistance();
+    }
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 //Todo replace by config file
@@ -407,4 +420,8 @@ class ROUTES {
 }
 class TIMES {
     public static final String TRIP_ID = "trip_id",ARRIVAL_TIME = "arrival_time",STOP_ID = "stop_id";
+}
+class MAX_CAPACITY
+{
+    public static final int TRAM_OR_LIGHT_SUBWAY=157,SUBWAY=690,TRAIN=750,BUS=80,DEFAULT=100;
 }
